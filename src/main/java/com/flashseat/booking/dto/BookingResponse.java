@@ -17,4 +17,5 @@ public class BookingResponse {
     private BookingStatus status;
     private BigDecimal amount;
     private LocalDateTime createdAt;
+    private LocalDateTime expiresAt;
 }
