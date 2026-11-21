@@ -3,6 +3,8 @@ package com.flashseat.booking.controller;
 import com.flashseat.booking.dto.BookingResponse;
 import com.flashseat.booking.dto.CreateBookingRequest;
 import com.flashseat.booking.service.BookingService;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,4 +31,14 @@ public class BookingController {
                 .status(HttpStatus.CREATED)
                 .body(response);
     }
+
+    @PatchMapping("/{bookingId}/cancel")
+    public ResponseEntity<Void> cancelBooking(
+            @PathVariable Long bookingId) {
+
+        bookingService.cancelBooking(bookingId);
+
+        return ResponseEntity.noContent().build();
+    }
+
 }
