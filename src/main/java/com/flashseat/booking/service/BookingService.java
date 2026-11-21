@@ -58,7 +58,8 @@ public class BookingService {
                 savedBooking.getUserId(),
                 savedBooking.getStatus(),
                 savedBooking.getAmount(),
-                savedBooking.getCreatedAt()
+                savedBooking.getCreatedAt(),
+                savedBooking.getExpiresAt()
         );
     }
 }

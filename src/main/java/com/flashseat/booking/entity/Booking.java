@@ -36,8 +36,12 @@ public class Booking {
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @Column
+    private LocalDateTime expiresAt;
+
     @PrePersist
     public void prePersist() {
         createdAt = LocalDateTime.now();
+        expiresAt = createdAt.plusMinutes(5);
     }
 }
