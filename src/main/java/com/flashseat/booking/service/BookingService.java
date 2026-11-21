@@ -62,4 +62,38 @@ public class BookingService {
                 savedBooking.getExpiresAt()
         );
     }
+
+    @Transactional
+    public void cancelBooking(Long bookingId) {
+
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Booking not found: " + bookingId
+                ));
+
+        int updatedRows = bookingRepository.updateBookingStatusIfMatch(
+                bookingId,
+                BookingStatus.PENDING,
+                BookingStatus.CANCELLED
+        );
+
+        if (updatedRows == 0) {
+            throw new IllegalStateException(
+                    "Booking cannot be cancelled: " + bookingId
+            );
+        }
+
+        int releasedRows = showSeatRepository.updateSeatStatusIfMatch(
+                booking.getShowSeat().getId(),
+                SeatStatus.LOCKED,
+                SeatStatus.AVAILABLE
+        );
+
+        if (releasedRows != 1) {
+            throw new IllegalStateException(
+                    "Failed to release seat for booking: " + bookingId
+            );
+        }
+    }
+
 }
