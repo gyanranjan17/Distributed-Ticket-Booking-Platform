@@ -56,6 +56,21 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("currentTime") LocalDateTime currentTime
     );
 
+    @Modifying
+    @Query("""
+    UPDATE Booking b
+    SET b.status = :confirmedStatus
+    WHERE b.id = :bookingId
+      AND b.status = :pendingStatus
+      AND b.expiresAt IS NOT NULL
+      AND b.expiresAt > :currentTime
+    """)
+    int confirmBookingIfPendingAndNotExpired(
+            @Param("bookingId") Long bookingId,
+            @Param("pendingStatus") BookingStatus pendingStatus,
+            @Param("confirmedStatus") BookingStatus confirmedStatus,
+            @Param("currentTime") LocalDateTime currentTime
+    );
 
 
 }

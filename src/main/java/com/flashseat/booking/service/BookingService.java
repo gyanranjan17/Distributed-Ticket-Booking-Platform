@@ -11,6 +11,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 @Service
 @RequiredArgsConstructor
 public class BookingService {
@@ -95,5 +97,40 @@ public class BookingService {
             );
         }
     }
+
+    @Transactional
+    public void confirmBooking(Long bookingId) {
+
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Booking not found: " + bookingId
+                ));
+
+        int updatedRows = bookingRepository.confirmBookingIfPendingAndNotExpired(
+                bookingId,
+                BookingStatus.PENDING,
+                BookingStatus.CONFIRMED,
+                LocalDateTime.now()
+        );
+
+        if (updatedRows == 0) {
+            throw new IllegalStateException(
+                    "Booking cannot be confirmed: " + bookingId
+            );
+        }
+
+        int bookedRows = showSeatRepository.updateSeatStatusIfMatch(
+                booking.getShowSeat().getId(),
+                SeatStatus.LOCKED,
+                SeatStatus.BOOKED
+        );
+
+        if (bookedRows != 1) {
+            throw new IllegalStateException(
+                    "Failed to mark seat as booked: " + bookingId
+            );
+        }
+    }
+
 
 }
