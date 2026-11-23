@@ -6,6 +6,7 @@ import com.flashseat.booking.entity.*;
 import com.flashseat.booking.exception.ResourceNotFoundException;
 import com.flashseat.booking.repository.BookingRepository;
 import com.flashseat.booking.repository.ShowSeatRepository;
+import com.flashseat.booking.exception.BookingNotFoundException;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -132,5 +133,27 @@ public class BookingService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public BookingResponse getBookingById(Long bookingId) {
+
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() ->
+                        new BookingNotFoundException(bookingId)
+                );
+
+        return mapToResponse(booking);
+    }
+    private BookingResponse mapToResponse(Booking booking) {
+
+        return new BookingResponse(
+                booking.getId(),
+                booking.getShowSeat().getId(),
+                booking.getUserId(),
+                booking.getStatus(),
+                booking.getAmount(),
+                booking.getCreatedAt(),
+                booking.getExpiresAt()
+        );
+    }
 
 }

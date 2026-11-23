@@ -1,10 +1,14 @@
 package com.flashseat.payment.service;
 
+import com.flashseat.payment.client.BookingClient;
 import com.flashseat.payment.dto.InitiatePaymentRequest;
 import com.flashseat.payment.dto.PaymentResponse;
 import com.flashseat.payment.entity.Payment;
 import com.flashseat.payment.entity.PaymentStatus;
 import com.flashseat.payment.repository.PaymentRepository;
+import com.flashseat.payment.client.BookingClient;
+import com.flashseat.payment.dto.BookingResponse;
+import java.time.LocalDateTime;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -15,6 +19,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @RequiredArgsConstructor
 public class PaymentService {
 
+    private final BookingClient bookingClient;
     private final PaymentRepository paymentRepository;
     private final TransactionTemplate transactionTemplate;
 
@@ -29,6 +34,8 @@ public class PaymentService {
             validateIdempotentRequest(existingPayment, request);
             return mapToResponse(existingPayment);
         }
+
+        validateBooking(request);
 
         try {
             Payment savedPayment = transactionTemplate.execute(status -> {
@@ -86,4 +93,39 @@ public class PaymentService {
                 payment.getUpdatedAt()
         );
     }
+
+    private void validateBooking(InitiatePaymentRequest request) {
+
+        BookingResponse booking =
+                bookingClient.getBooking(request.bookingId());
+
+        if (booking == null) {
+            throw new IllegalStateException(
+                    "Booking Service returned an empty response"
+            );
+        }
+
+        if (!"PENDING".equals(booking.status())) {
+            throw new IllegalStateException(
+                    "Booking is not pending: " + booking.status()
+            );
+        }
+
+        if (booking.expiresAt() == null ||
+                !booking.expiresAt().isAfter(LocalDateTime.now())) {
+
+            throw new IllegalStateException(
+                    "Booking has expired"
+            );
+        }
+
+        if (booking.amount() == null ||
+                booking.amount().compareTo(request.amount()) != 0) {
+
+            throw new IllegalStateException(
+                    "Payment amount does not match booking amount"
+            );
+        }
+    }
+
 }

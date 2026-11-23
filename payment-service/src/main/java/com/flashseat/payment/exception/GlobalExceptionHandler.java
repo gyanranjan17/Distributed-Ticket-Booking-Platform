@@ -38,4 +38,23 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.CONFLICT)
                 .body(Map.of("error", ex.getMessage()));
     }
+
+    @ExceptionHandler(BookingNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleBookingNotFound(
+            BookingNotFoundException ex) {
+
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(Map.of("error", ex.getMessage()));
+    }
+
+    @ExceptionHandler(BookingServiceUnavailableException.class)
+    public ResponseEntity<Map<String, String>> handleBookingServiceUnavailable(
+            BookingServiceUnavailableException ex) {
+
+        return ResponseEntity
+                .status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("error", ex.getMessage()));
+    }
+
 }

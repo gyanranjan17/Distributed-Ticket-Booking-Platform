@@ -1,6 +1,7 @@
 package com.flashseat.payment;
 
 import com.flashseat.payment.repository.PaymentRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -10,6 +11,15 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import com.flashseat.payment.client.BookingClient;
+import com.flashseat.payment.dto.BookingResponse;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.when;
 
 import java.util.UUID;
 
@@ -31,6 +41,29 @@ class PaymentControllerIntegrationTest {
 
     @Autowired
     private PaymentRepository paymentRepository;
+
+    @MockitoBean
+    private BookingClient bookingClient;
+
+    @BeforeEach
+    void mockBookingService() {
+
+        when(bookingClient.getBooking(anyLong()))
+                .thenAnswer(invocation -> {
+
+                    Long bookingId = invocation.getArgument(0);
+
+                    return new BookingResponse(
+                            bookingId,
+                            10L,
+                            1L,
+                            "PENDING",
+                            new BigDecimal("500.00"),
+                            LocalDateTime.now(),
+                            LocalDateTime.now().plusMinutes(10)
+                    );
+                });
+    }
 
     @Test
     void validPaymentRequestShouldReturn201() throws Exception {
