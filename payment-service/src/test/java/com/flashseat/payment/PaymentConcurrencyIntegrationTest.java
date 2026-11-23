@@ -1,18 +1,27 @@
 package com.flashseat.payment;
 
+import com.flashseat.payment.client.BookingClient;
 import com.flashseat.payment.dto.InitiatePaymentRequest;
 import com.flashseat.payment.dto.PaymentResponse;
 import com.flashseat.payment.entity.PaymentStatus;
 import com.flashseat.payment.repository.PaymentRepository;
 import com.flashseat.payment.service.PaymentService;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.containers.PostgreSQLContainer;
+import com.flashseat.payment.dto.BookingResponse;
+
+import java.time.LocalDateTime;
+
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -36,6 +45,29 @@ class PaymentConcurrencyIntegrationTest {
 
     @Autowired
     private PaymentRepository paymentRepository;
+
+    @MockitoBean
+    private BookingClient bookingClient;
+
+    @BeforeEach
+    void mockBookingService() {
+
+        when(bookingClient.getBooking(anyLong()))
+                .thenAnswer(invocation -> {
+
+                    Long bookingId = invocation.getArgument(0);
+
+                    return new BookingResponse(
+                            bookingId,
+                            10L,
+                            1L,
+                            "PENDING",
+                            new BigDecimal("500.00"),
+                            LocalDateTime.now(),
+                            LocalDateTime.now().plusMinutes(10)
+                    );
+                });
+    }
 
     @Test
     void concurrentRequestsWithSameKeyShouldCreateOnlyOnePayment()

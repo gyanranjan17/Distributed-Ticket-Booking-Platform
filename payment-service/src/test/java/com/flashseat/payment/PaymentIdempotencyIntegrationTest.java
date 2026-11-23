@@ -5,6 +5,7 @@ import com.flashseat.payment.dto.PaymentResponse;
 import com.flashseat.payment.repository.PaymentRepository;
 import com.flashseat.payment.service.PaymentService;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -13,11 +14,19 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import com.flashseat.payment.client.BookingClient;
+import com.flashseat.payment.dto.BookingResponse;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+
+import java.time.LocalDateTime;
+
+import static org.mockito.ArgumentMatchers.anyLong;
 
 import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 @SpringBootTest
 @Testcontainers
@@ -28,11 +37,34 @@ class PaymentIdempotencyIntegrationTest {
     static PostgreSQLContainer<?> postgres =
             new PostgreSQLContainer<>("postgres:18");
 
+    @MockitoBean
+    private BookingClient bookingClient;
+
     @Autowired
     private PaymentService paymentService;
 
     @Autowired
     private PaymentRepository paymentRepository;
+
+    @BeforeEach
+    void mockBookingService() {
+
+        when(bookingClient.getBooking(anyLong()))
+                .thenAnswer(invocation -> {
+
+                    Long bookingId = invocation.getArgument(0);
+
+                    return new BookingResponse(
+                            bookingId,
+                            10L,
+                            1L,
+                            "PENDING",
+                            new BigDecimal("500.00"),
+                            LocalDateTime.now(),
+                            LocalDateTime.now().plusMinutes(10)
+                    );
+                });
+    }
 
     @Test
     void sameRequestShouldReturnExistingPayment() {
@@ -105,4 +137,55 @@ class PaymentIdempotencyIntegrationTest {
                 )
         );
     }
+
+    @Test
+    void validBookingShouldCreatePayment() {
+
+        String key = UUID.randomUUID().toString();
+
+        InitiatePaymentRequest request =
+                new InitiatePaymentRequest(
+                        101L,
+                        new BigDecimal("500.00"),
+                        key
+                );
+
+        PaymentResponse response =
+                paymentService.initiatePayment(request);
+
+        assertNotNull(response);
+        assertNotNull(response.paymentId());
+        assertEquals("PENDING", response.status().toString());
+
+        verify(bookingClient, times(1))
+                .getBooking(101L);
+    }
+
+    @Test
+    void idempotentRetryShouldNotCallBookingServiceAgain() {
+
+        String key = UUID.randomUUID().toString();
+
+        InitiatePaymentRequest request =
+                new InitiatePaymentRequest(
+                        101L,
+                        new BigDecimal("500.00"),
+                        key
+                );
+
+        PaymentResponse firstResponse =
+                paymentService.initiatePayment(request);
+
+        PaymentResponse secondResponse =
+                paymentService.initiatePayment(request);
+
+        assertEquals(
+                firstResponse.paymentId(),
+                secondResponse.paymentId()
+        );
+
+        verify(bookingClient, times(1))
+                .getBooking(101L);
+    }
+
 }
