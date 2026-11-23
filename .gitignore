@@ -37,3 +37,11 @@ build/
 .env
 .env.*
 !.env.example
+
+.venv/
+__pycache__/
+
+# Local Git migration and cleanup artifacts
+/booking-service-backup
+/flashseat-history-cleanup
+/password-replacements.txt
