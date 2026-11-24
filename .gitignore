@@ -44,4 +44,5 @@ __pycache__/
 # Local Git migration and cleanup artifacts
 /booking-service-backup
 /flashseat-history-cleanup
-/password-replacements.txt
+/password-replacements.txt*.dump
+*.dump
