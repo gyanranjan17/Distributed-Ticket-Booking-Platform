@@ -47,7 +47,7 @@ class PaymentControllerIntegrationTest {
 
     @BeforeEach
     void mockBookingService() {
-
+        paymentRepository.deleteAllInBatch();
         when(bookingClient.getBooking(anyLong()))
                 .thenAnswer(invocation -> {
 

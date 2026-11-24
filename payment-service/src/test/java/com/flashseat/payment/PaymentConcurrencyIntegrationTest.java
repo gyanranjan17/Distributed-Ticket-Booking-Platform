@@ -17,6 +17,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.containers.PostgreSQLContainer;
 import com.flashseat.payment.dto.BookingResponse;
+import java.util.concurrent.atomic.AtomicInteger;
+import com.flashseat.payment.entity.Payment;
 
 import java.time.LocalDateTime;
 
@@ -51,7 +53,7 @@ class PaymentConcurrencyIntegrationTest {
 
     @BeforeEach
     void mockBookingService() {
-
+        paymentRepository.deleteAllInBatch();
         when(bookingClient.getBooking(anyLong()))
                 .thenAnswer(invocation -> {
 
@@ -126,4 +128,78 @@ class PaymentConcurrencyIntegrationTest {
             executor.shutdownNow();
         }
     }
+
+    @Test
+    void concurrentRequestsWithDifferentKeysShouldCreateOnlyOnePayment()
+            throws Exception {
+
+        Long bookingId = 101L;
+        int requestCount = 10;
+
+        ExecutorService executor =
+                Executors.newFixedThreadPool(requestCount);
+
+        CountDownLatch startSignal = new CountDownLatch(1);
+
+        AtomicInteger successCount = new AtomicInteger(0);
+        AtomicInteger conflictCount = new AtomicInteger(0);
+
+        List<Future<?>> futures = new ArrayList<>();
+
+        try {
+            for (int i = 0; i < requestCount; i++) {
+
+                InitiatePaymentRequest request =
+                        new InitiatePaymentRequest(
+                                bookingId,
+                                new BigDecimal("500.00"),
+                                UUID.randomUUID().toString()
+                        );
+
+                futures.add(executor.submit(() -> {
+
+                    startSignal.await();
+
+                    try {
+                        paymentService.initiatePayment(request);
+                        successCount.incrementAndGet();
+
+                    } catch (IllegalStateException ex) {
+
+                        assertEquals(
+                                "An active payment already exists for this booking",
+                                ex.getMessage()
+                        );
+
+                        conflictCount.incrementAndGet();
+                    }
+
+                    return null;
+                }));
+            }
+
+            startSignal.countDown();
+
+            for (Future<?> future : futures) {
+                future.get(30, TimeUnit.SECONDS);
+            }
+
+            assertEquals(1, successCount.get());
+            assertEquals(9, conflictCount.get());
+
+            List<Payment> payments =
+                    paymentRepository.findByBookingId(bookingId);
+
+            assertEquals(1, payments.size());
+
+            assertEquals(
+                    PaymentStatus.PENDING,
+                    payments.get(0).getStatus()
+            );
+
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
 }

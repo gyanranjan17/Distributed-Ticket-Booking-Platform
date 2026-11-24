@@ -6,9 +6,9 @@ import com.flashseat.payment.dto.PaymentResponse;
 import com.flashseat.payment.entity.Payment;
 import com.flashseat.payment.entity.PaymentStatus;
 import com.flashseat.payment.repository.PaymentRepository;
-import com.flashseat.payment.client.BookingClient;
 import com.flashseat.payment.dto.BookingResponse;
 import java.time.LocalDateTime;
+import org.hibernate.exception.ConstraintViolationException;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -51,17 +51,43 @@ public class PaymentService {
 
             return mapToResponse(savedPayment);
 
-        } catch (DataIntegrityViolationException ex) {
+        }catch (DataIntegrityViolationException ex) {
 
-            // The insert transaction has already rolled back.
-            // A competing request may have inserted the same key.
+            boolean duplicateIdempotencyKey =
+                    isUniqueConstraintViolation(
+                            ex,
+                            "payments_idempotency_key_key"
+                    );
+
+            boolean duplicateActivePayment =
+                    isUniqueConstraintViolation(
+                            ex,
+                            "uk_active_payment_per_booking"
+                    );
+
+            if (!duplicateIdempotencyKey && !duplicateActivePayment) {
+                throw ex;
+            }
+
+            // Check whether a concurrent request used the same key.
             Payment concurrentPayment = paymentRepository
                     .findByIdempotencyKey(request.idempotencyKey())
-                    .orElseThrow(() -> ex);
+                    .orElse(null);
 
-            validateIdempotentRequest(concurrentPayment, request);
+            if (concurrentPayment != null) {
 
-            return mapToResponse(concurrentPayment);
+                validateIdempotentRequest(concurrentPayment, request);
+
+                return mapToResponse(concurrentPayment);
+            }
+
+            if (duplicateActivePayment) {
+                throw new IllegalStateException(
+                        "An active payment already exists for this booking"
+                );
+            }
+
+            throw ex;
         }
     }
 
@@ -126,6 +152,29 @@ public class PaymentService {
                     "Payment amount does not match booking amount"
             );
         }
+    }
+
+    private boolean isUniqueConstraintViolation(
+            Throwable exception,
+            String constraintName
+    ) {
+        Throwable cause = exception;
+
+        while (cause != null) {
+
+            if (cause instanceof ConstraintViolationException violation) {
+
+                if ("23505".equals(violation.getSQLState())
+                        && constraintName.equals(
+                        violation.getConstraintName())) {
+                    return true;
+                }
+            }
+
+            cause = cause.getCause();
+        }
+
+        return false;
     }
 
 }

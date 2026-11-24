@@ -10,6 +10,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import com.flashseat.payment.entity.Payment;
+import com.flashseat.payment.entity.PaymentStatus;
+import java.util.List;
 
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -48,7 +51,7 @@ class PaymentIdempotencyIntegrationTest {
 
     @BeforeEach
     void mockBookingService() {
-
+        paymentRepository.deleteAllInBatch();
         when(bookingClient.getBooking(anyLong()))
                 .thenAnswer(invocation -> {
 
@@ -163,7 +166,7 @@ class PaymentIdempotencyIntegrationTest {
 
     @Test
     void idempotentRetryShouldNotCallBookingServiceAgain() {
-
+        paymentRepository.deleteAllInBatch();
         String key = UUID.randomUUID().toString();
 
         InitiatePaymentRequest request =
@@ -186,6 +189,73 @@ class PaymentIdempotencyIntegrationTest {
 
         verify(bookingClient, times(1))
                 .getBooking(101L);
+    }
+
+    @Test
+    void shouldAllowNewPaymentAfterPreviousPaymentFailed() {
+
+        Long bookingId = 101L;
+        BigDecimal amount = new BigDecimal("500.00");
+
+        String firstKey = UUID.randomUUID().toString();
+        String secondKey = UUID.randomUUID().toString();
+
+        // Create the first payment
+        PaymentResponse firstResponse =
+                paymentService.initiatePayment(
+                        new InitiatePaymentRequest(
+                                bookingId,
+                                amount,
+                                firstKey
+                        )
+                );
+
+        // Simulate a confirmed payment failure
+        Payment firstPayment = paymentRepository
+                .findById(firstResponse.paymentId())
+                .orElseThrow();
+
+        firstPayment.setStatus(PaymentStatus.FAILED);
+
+        paymentRepository.saveAndFlush(firstPayment);
+
+        // Initiate a new payment for the same booking
+        PaymentResponse secondResponse =
+                paymentService.initiatePayment(
+                        new InitiatePaymentRequest(
+                                bookingId,
+                                amount,
+                                secondKey
+                        )
+                );
+
+        // Verify that a new payment was created
+        assertNotEquals(
+                firstResponse.paymentId(),
+                secondResponse.paymentId()
+        );
+
+        assertEquals(
+                PaymentStatus.PENDING,
+                secondResponse.status()
+        );
+
+        // Verify both payment records exist
+        List<Payment> payments =
+                paymentRepository.findByBookingId(bookingId);
+
+        assertEquals(2, payments.size());
+
+        long failedCount = payments.stream()
+                .filter(p -> p.getStatus() == PaymentStatus.FAILED)
+                .count();
+
+        long pendingCount = payments.stream()
+                .filter(p -> p.getStatus() == PaymentStatus.PENDING)
+                .count();
+
+        assertEquals(1, failedCount);
+        assertEquals(1, pendingCount);
     }
 
 }
