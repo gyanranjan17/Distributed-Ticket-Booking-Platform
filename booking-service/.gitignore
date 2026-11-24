@@ -40,3 +40,6 @@ build/
 
 .venv/
 __pycache__/
+
+# Database backups
+*.dump
