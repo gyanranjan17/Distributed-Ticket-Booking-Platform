@@ -3,6 +3,7 @@ package com.flashseat.payment.service;
 import com.flashseat.payment.client.BookingClient;
 import com.flashseat.payment.dto.BookingResponse;
 import com.flashseat.payment.dto.InitiatePaymentRequest;
+import com.flashseat.payment.gateway.PaymentGateway;
 import com.flashseat.payment.repository.PaymentRepository;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -29,16 +30,20 @@ class PaymentBookingValidationTest {
     @Mock
     private TransactionTemplate transactionTemplate;
 
+    @Mock
+    private PaymentGateway paymentGateway;
+
     private PaymentService paymentService;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-
+        paymentGateway = mock(PaymentGateway.class);
         paymentService = new PaymentService(
                 bookingClient,
                 paymentRepository,
-                transactionTemplate
+                transactionTemplate,
+                paymentGateway
         );
 
         when(paymentRepository.findByIdempotencyKey(anyString()))

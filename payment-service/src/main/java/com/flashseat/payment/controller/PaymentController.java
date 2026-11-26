@@ -3,6 +3,7 @@ package com.flashseat.payment.controller;
 import com.flashseat.payment.dto.InitiatePaymentRequest;
 import com.flashseat.payment.dto.PaymentResponse;
 import com.flashseat.payment.service.PaymentService;
+import com.flashseat.payment.dto.PaymentCallbackRequest;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,5 +29,16 @@ public class PaymentController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(response);
+    }
+
+    @PostMapping("/{paymentId}/process")
+    public ResponseEntity<PaymentResponse> processPayment(
+            @PathVariable Long paymentId
+    ) {
+
+        PaymentResponse response =
+                paymentService.processPayment(paymentId);
+
+        return ResponseEntity.ok(response);
     }
 }

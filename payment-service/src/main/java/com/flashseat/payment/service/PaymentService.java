@@ -9,6 +9,11 @@ import com.flashseat.payment.repository.PaymentRepository;
 import com.flashseat.payment.dto.BookingResponse;
 import java.time.LocalDateTime;
 import org.hibernate.exception.ConstraintViolationException;
+import com.flashseat.payment.dto.PaymentCallbackRequest;
+import java.util.Objects;
+import jakarta.persistence.EntityNotFoundException;
+import com.flashseat.payment.gateway.PaymentGateway;
+import com.flashseat.payment.gateway.GatewayPaymentResult;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -22,6 +27,7 @@ public class PaymentService {
     private final BookingClient bookingClient;
     private final PaymentRepository paymentRepository;
     private final TransactionTemplate transactionTemplate;
+    private final PaymentGateway paymentGateway;
 
     public PaymentResponse initiatePayment(InitiatePaymentRequest request) {
 
@@ -176,5 +182,158 @@ public class PaymentService {
 
         return false;
     }
+
+    public PaymentResponse confirmPayment(
+            Long paymentId,
+            String transactionId
+    ) {
+        return transitionPaymentStatus(
+                paymentId,
+                PaymentStatus.SUCCESS,
+                transactionId
+        );
+    }
+
+    public PaymentResponse failPayment(
+            Long paymentId,
+            String transactionId
+    ) {
+        return transitionPaymentStatus(
+                paymentId,
+                PaymentStatus.FAILED,
+                transactionId
+        );
+    }
+
+    private PaymentResponse transitionPaymentStatus(
+            Long paymentId,
+            PaymentStatus targetStatus,
+            String transactionId
+    ) {
+
+        if (transactionId == null || transactionId.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Transaction ID is required"
+            );
+        }
+
+        return transactionTemplate.execute(status -> {
+
+            int updatedRows =
+                    paymentRepository.updatePaymentStatusIfCurrent(
+                            paymentId,
+                            PaymentStatus.PENDING,
+                            targetStatus,
+                            transactionId,
+                            LocalDateTime.now()
+                    );
+
+            Payment payment = paymentRepository
+                    .findById(paymentId)
+                    .orElseThrow(() -> new EntityNotFoundException(
+                            "Payment not found: " + paymentId
+                    ));
+
+            // Successful state transition
+            if (updatedRows == 1) {
+                return mapToResponse(payment);
+            }
+
+            // Idempotent replay
+            if (payment.getStatus() == targetStatus
+                    && Objects.equals(
+                    payment.getTransactionId(),
+                    transactionId
+            )) {
+
+                return mapToResponse(payment);
+            }
+
+            // Conflicting callback
+            throw new IllegalStateException(
+                    "Cannot transition payment from "
+                            + payment.getStatus()
+                            + " to "
+                            + targetStatus
+                            + " with the supplied transaction ID"
+            );
+        });
+    }
+
+    public PaymentResponse processPayment(Long paymentId) {
+
+        Payment payment = paymentRepository
+                .findById(paymentId)
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "Payment not found: " + paymentId
+                ));
+
+        // Avoid processing an already completed payment
+        if (payment.getStatus().isTerminal()) {
+            return mapToResponse(payment);
+        }
+
+        // Call the external payment gateway
+        GatewayPaymentResult result =
+                paymentGateway.processPayment(
+                        payment.getId(),
+                        payment.getAmount()
+                );
+
+        // Verify the gateway result belongs to this payment
+        if (!Objects.equals(
+                payment.getId(),
+                result.paymentId()
+        )) {
+            throw new IllegalStateException(
+                    "Gateway returned a mismatched payment ID"
+            );
+        }
+
+        // Apply the gateway outcome
+        return switch (result.status()) {
+
+            case SUCCESS -> confirmPayment(
+                    paymentId,
+                    result.transactionId()
+            );
+
+            case FAILED -> failPayment(
+                    paymentId,
+                    result.transactionId()
+            );
+
+            case UNKNOWN -> paymentRepository
+                    .findById(paymentId)
+                    .map(this::mapToResponse)
+                    .orElseThrow(() -> new EntityNotFoundException(
+                            "Payment not found: " + paymentId
+                    ));
+        };
+    }
+
+    public PaymentResponse handlePaymentCallback(
+            PaymentCallbackRequest request
+    ) {
+
+        return switch (request.status()) {
+
+            case SUCCESS -> confirmPayment(
+                    request.paymentId(),
+                    request.transactionId()
+            );
+
+            case FAILED -> failPayment(
+                    request.paymentId(),
+                    request.transactionId()
+            );
+
+            case UNKNOWN -> throw new IllegalArgumentException(
+                    "Callback must contain a definitive payment status"
+            );
+        };
+    }
+
+
 
 }
