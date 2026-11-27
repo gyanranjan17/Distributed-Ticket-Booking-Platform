@@ -35,6 +35,9 @@ class PaymentBookingValidationTest {
 
     private PaymentService paymentService;
 
+    @Mock
+    private OutboxEventService outboxEventService;
+
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
@@ -43,7 +46,8 @@ class PaymentBookingValidationTest {
                 bookingClient,
                 paymentRepository,
                 transactionTemplate,
-                paymentGateway
+                paymentGateway,
+                outboxEventService
         );
 
         when(paymentRepository.findByIdempotencyKey(anyString()))

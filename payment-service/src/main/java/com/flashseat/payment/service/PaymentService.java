@@ -28,6 +28,7 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final TransactionTemplate transactionTemplate;
     private final PaymentGateway paymentGateway;
+    private final OutboxEventService outboxEventService;
 
     public PaymentResponse initiatePayment(InitiatePaymentRequest request) {
 
@@ -236,6 +237,10 @@ public class PaymentService {
 
             // Successful state transition
             if (updatedRows == 1) {
+                if (targetStatus == PaymentStatus.SUCCESS) {
+                    outboxEventService.recordPaymentSucceeded(payment);
+                }
+
                 return mapToResponse(payment);
             }
 
@@ -333,7 +338,5 @@ public class PaymentService {
             );
         };
     }
-
-
 
 }
